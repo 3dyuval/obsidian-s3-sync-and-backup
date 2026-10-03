@@ -263,20 +263,27 @@ export class SyncEngine {
 
 	/**
 	 * Inspect a freshly built plan and return an error message when it would delete
-	 * local files against a destination that has no prior successful sync recorded.
+	 * files on either side against a destination that has no prior successful sync recorded.
 	 *
 	 * Rationale: a destination with no `lastSuccessfulSyncAt` either has an empty
 	 * journal (true first sync, or freshly cleared by Phase 0) or a journal that
 	 * could not be confirmed against any prior successful run.  In both cases the
-	 * decision table cannot legitimately emit `delete-local` — that action requires
-	 * a matching baseline, which a never-synced destination does not have.  Any
-	 * `delete-local` on such a destination is therefore a bug and is refused.
+	 * decision table cannot legitimately emit `delete-local` or `delete-remote` —
+	 * both require a matching baseline, which a never-synced destination does not
+	 * have.  Either deletion on such a destination is therefore a bug and is refused.
+	 *
+	 * A stale or foreign journal that classifies an empty local vault as "everything
+	 * was deleted" produces a plan full of `delete-remote`; counting only
+	 * `delete-local` would let that plan wipe the entire remote vault.
 	 *
 	 * @param plan - Planner output to inspect.
 	 * @returns A human-readable error message when the plan should be blocked, or `null` to proceed.
 	 */
 	private async checkDestructivePlan(plan: SyncPlanItem[]): Promise<string | null> {
-		const deleteCount = plan.reduce((count, item) => item.action === 'delete-local' ? count + 1 : count, 0);
+		const deleteCount = plan.reduce(
+			(count, item) => item.action === 'delete-local' || item.action === 'delete-remote' ? count + 1 : count,
+			0,
+		);
 		if (deleteCount === 0) return null;
 
 		const hasPriorSuccess = (await withJournalContext('reading prior successful sync timestamp',
@@ -285,7 +292,7 @@ export class SyncEngine {
 		if (hasPriorSuccess) return null;
 
 		return (
-			`Aborted: destructive plan blocked — ${deleteCount} of ${plan.length} action(s) would trash local files ` +
+			`Aborted: destructive plan blocked — ${deleteCount} of ${plan.length} action(s) would delete files ` +
 			'against a destination that has no prior successful sync. ' +
 			'Verify the configured bucket and sync prefix point to the expected location, ' +
 			'then use "Reset sync journal" in Advanced settings if a fresh re-upload is intended.'
