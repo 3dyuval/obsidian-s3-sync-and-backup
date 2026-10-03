@@ -318,6 +318,37 @@ describe('SyncPlanner', () => {
 			]);
 		});
 
+		it('computes both fingerprints before deciding when local and remote are both new', async () => {
+			addVaultFile('fresh.md', 'identical', 100, 9);
+			s3Provider.listObjects.mockResolvedValue([
+				createRemoteObject({ key: 'vault/fresh.md', size: 9, etag: 'etag-fresh' }),
+			]);
+			s3Provider.headObject.mockResolvedValue({
+				etag: 'etag-fresh',
+				size: 9,
+				lastModified: 100,
+				fingerprint: 'sha256:identical',
+			});
+			mockedReadVaultFile.mockResolvedValue('identical');
+			payloadCodec.fingerprint.mockResolvedValue('sha256:identical');
+
+			let captured: DecisionInput | undefined;
+			mockedDecide.mockImplementation((input) => {
+				captured = input;
+				expect(input.local).toBe('L+');
+				expect(input.remote).toBe('R+');
+				return createPlanItem(input.path, 'adopt');
+			});
+
+			const plan = await planner.buildPlan();
+
+			expect(captured?.localFingerprint).toBe('sha256:identical');
+			expect(captured?.remoteFingerprint).toBe('sha256:identical');
+			expect(plan).toEqual([
+				expect.objectContaining({ path: 'fresh.md', action: 'adopt' }),
+			]);
+		});
+
 		it('filters skip items when local and remote both match the baseline', async () => {
 			addVaultFile('stable.md', '1234567890', 500, 10);
 			s3Provider.listObjects.mockResolvedValue([
