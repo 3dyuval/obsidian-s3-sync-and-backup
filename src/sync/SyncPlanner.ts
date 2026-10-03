@@ -149,6 +149,11 @@ export class SyncPlanner {
 			const localClass = await this.classifyLocal(ctx);
 			const remoteClass = await this.classifyRemote(ctx);
 
+			if (localClass === 'L+' && remoteClass === 'R+') {
+				await this.computeLocalFingerprint(ctx);
+				await this.ensureRemoteFingerprint(ctx);
+			}
+
 			const input: DecisionInput = {
 				path: ctx.path,
 				local: localClass,
