@@ -591,7 +591,23 @@ describe('SyncEngine', () => {
 			expect(result.errors[0]?.message).toMatch(/destructive plan/i);
 		});
 
-		it('does not block plans without any delete-local actions', async () => {
+		it('blocks a delete-remote-only plan on a destination with no prior successful sync', async () => {
+			const context = createEngineContext();
+			const plan: SyncPlanItem[] = Array.from({ length: 50 }, (_, i) => ({
+				path: `notes/remote-${i}.md`,
+				action: 'delete-remote' as const,
+				reason: 'baseline says locally deleted',
+			}));
+			context.planner.buildPlan.mockResolvedValueOnce(plan);
+
+			const result = await context.engine.sync();
+
+			expect(context.executor.execute).not.toHaveBeenCalled();
+			expect(result.success).toBe(false);
+			expect(result.errors[0]?.message).toMatch(/destructive plan/i);
+		});
+
+		it('does not block plans without any delete actions', async () => {
 			const context = createEngineContext();
 			context.planner.buildPlan.mockResolvedValueOnce([
 				createPlanItem('notes/a.md', 'upload'),
